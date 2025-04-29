@@ -1,50 +1,42 @@
-name: Update Confluence with Versions
+name: Update Angular Version in Confluence
 
 on:
   push:
     paths:
-      - 'package.json'   # Angular version changes
-      - 'pom.xml'        # Spring (Maven) changes
-      - 'build.gradle'   # Spring (Gradle) changes
+      - 'package.json'  # Trigger only when package.json changes
 
 jobs:
   update-confluence:
     runs-on: ubuntu-latest
     steps:
-      # Checkout code
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      # Extract Angular version (Node.js method)
       - name: Get Angular version
-        id: angular-version
-        if: contains(github.event.head_commit.modified, 'package.json')
+        id: get-version
         run: |
-          ANGULAR_VER=$(node -pe "require('./package.json').dependencies['@angular/core'] || 'N/A'")
-          echo "ANGULAR_VERSION=$ANGULAR_VER" >> $GITHUB_ENV
-          echo "version=$ANGULAR_VER" >> $GITHUB_OUTPUT
+          ANGULAR_VERSION=$(node -pe "require('./package.json').dependencies['@angular/core'] || 'Not found'")
+          echo "ANGULAR_VERSION=$ANGULAR_VERSION" >> $GITHUB_ENV
+          echo "::set-output name=version::$ANGULAR_VERSION"
 
-      # Extract Spring version (Python fallback for Windows compatibility)
-      - name: Get Spring version (Maven)
-        id: spring-version-maven
-        if: contains(github.event.head_commit.modified, 'pom.xml')
-        run: |
-          python -c "import xml.etree.ElementTree as ET; t=ET.parse('pom.xml'); print(t.find('.//{http://maven.apache.org/POM/4.0.0}version').text if t.find('.//{http://maven.apache.org/POM/4.0.0}version') is not None else 'N/A')" > spring-ver.txt
-          SPRING_VER=$(cat spring-ver.txt)
-          echo "SPRING_VERSION=$SPRING_VER" >> $GITHUB_ENV
-          echo "version=$SPRING_VER" >> $GITHUB_OUTPUT
-
-      # Update Confluence
       - name: Update Confluence Page
-        uses: atlassian/gajira-update@v2.0.0
-        with:
-          email: ${{ secrets.CONFLUENCE_EMAIL }}
-          api_token: ${{ secrets.CONFLUENCE_API_TOKEN }}
-          page_id: ${{ secrets.CONFLUENCE_PAGE_ID }}
-          content: |
-            <p><strong>${{ github.repository }} Versions</strong></p>
-            <table>
-              <tr><td>Angular</td><td>${{ env.ANGULAR_VERSION || 'N/A' }}</td></tr>
-              <tr><td>Spring</td><td>${{ env.SPRING_VERSION || 'N/A' }}</td></tr>
-            </table>
-            <p><em>Updated at ${{ github.event.head_commit.timestamp }}</em></p>
+        run: |
+          # Format the Confluence content (Storage Format)
+          CONTENT='{
+            "version": { "number": 2 },
+            "title": "Angular Versions",
+            "type": "page",
+            "body": {
+              "storage": {
+                "value": "<p><strong>${{ github.repository }} Angular Version</strong></p><p>Version: <code>${{ env.ANGULAR_VERSION }}</code></p><p>Last updated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")</p>",
+                "representation": "storage"
+              }
+            }
+          }'
+
+          # Call Confluence REST API
+          curl -X PUT \
+            -u "${{ secrets.CONFLUENCE_EMAIL }}:${{ secrets.CONFLUENCE_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "$CONTENT" \
+            "https://${{ secrets.CONFLUENCE_DOMAIN }}/wiki/rest/api/content/${{ secrets.CONFLUENCE_PAGE_ID }}"
