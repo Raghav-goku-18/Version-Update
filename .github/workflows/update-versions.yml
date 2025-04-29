@@ -3,38 +3,40 @@ name: Update Angular Version in Confluence
 on:
   push:
     paths:
-      - 'package.json'  # Trigger only when package.json changes
+      - 'package.json'
 
 jobs:
   update-confluence:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Get Angular version
         id: get-version
         run: |
           ANGULAR_VERSION=$(node -pe "require('./package.json').dependencies['@angular/core'] || 'Not found'")
           echo "ANGULAR_VERSION=$ANGULAR_VERSION" >> $GITHUB_ENV
-          echo "::set-output name=version::$ANGULAR_VERSION"
+          # Escape JSON special characters
+          ESCAPED_VERSION=$(node -pe "JSON.stringify(process.env.ANGULAR_VERSION)")
+          echo "ESCAPED_VERSION=$ESCAPED_VERSION" >> $GITHUB_ENV
 
       - name: Update Confluence Page
         run: |
-          # Format the Confluence content (Storage Format)
-          CONTENT='{
-            "version": { "number": 2 },
+          CONTENT=$(cat <<EOF
+          {
+            "version": { "number": $(date +%s) },
             "title": "Angular Versions",
             "type": "page",
             "body": {
               "storage": {
-                "value": "<p><strong>${{ github.repository }} Angular Version</strong></p><p>Version: <code>${{ env.ANGULAR_VERSION }}</code></p><p>Last updated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")</p>",
+                "value": "<p><strong>${{ github.repository }}</strong><br>Angular: <code>${{ env.ESCAPED_VERSION }}</code></p>",
                 "representation": "storage"
               }
             }
-          }'
-
-          # Call Confluence REST API
+          }
+          EOF
+          )
+          
           curl -X PUT \
             -u "${{ secrets.CONFLUENCE_EMAIL }}:${{ secrets.CONFLUENCE_API_TOKEN }}" \
             -H "Content-Type: application/json" \
