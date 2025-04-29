@@ -1,0 +1,8 @@
+<div style="height: 100%; display: flex; flex-direction: column">
+    <div style="margin-bottom: 4px">
+        <button (click)="addBlankRow()">Append Row</button>
+    </div>
+    <ag-grid-angular class="ag-theme-quartz" style="height: 90vh" [rowData]="rowData" rowSelection="multiple" [columnDefs]="colDefs" [defaultColDef]="defaultColDef" [pagination]="pagination" [paginationPageSize]="paginationPageSize" [paginationPageSizeSelector]="paginationPageSizeSelector"
+        (cellMouseDown)="onCellMouseDown($event)" (cellMouseOver)="onCellMouseOver($event)" (cellMouseUp)="onCellMouseUp($event)">
+    </ag-grid-angular>
+</div>

@@ -1,0 +1,25 @@
+.custom-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 10px; /* Add padding for the fill handle */
+}
+
+.fill-handle {
+  width: 10px;
+  height: 10px;
+  background-color: #0078d4;
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  cursor: crosshair; /* Change cursor to a cross (+) sign */
+  border: none;
+  border-radius: 2px;
+  outline: none;
+}
+
+.fill-handle:hover {
+  background-color: #005a9e;
+  cursor: crosshair;
+}
