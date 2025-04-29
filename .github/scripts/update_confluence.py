@@ -1,15 +1,18 @@
 import requests
 import json
 import os
+import datetime
+import subprocess
 import re
 
-# Configuration
+# Setup
 email = os.environ["CONFLUENCE_EMAIL"]
 api_token = os.environ["CONFLUENCE_API_TOKEN"]
+github_actor = os.environ.get("GITHUB_ACTOR", "unknown")
 page_id = "196609"
 confluence_base_url = "https://raghavlahoti55.atlassian.net/wiki"
 
-# Step 1: Extract versions from package.json
+# Extract project versions
 with open("package.json", "r") as f:
     data = json.load(f)
 dependencies = data.get("dependencies", {})
@@ -19,62 +22,71 @@ angular_core_version = dependencies.get("@angular/core", "N/A")
 angular_cli_version = dev_dependencies.get("@angular/cli", "N/A")
 typescript_version = dev_dependencies.get("typescript", "N/A")
 
-# Step 2: Fetch latest versions from npm
-def fetch_latest_version(package_name):
-    url = f"https://registry.npmjs.org/{package_name}"
-    response = requests.get(url)
-    if response.status_code == 200:
-        data = response.json()
-        return data.get("dist-tags", {}).get("latest", "N/A")
-    return "N/A"
+# Get latest versions from npm
+def fetch_latest_version(pkg):
+    res = requests.get(f"https://registry.npmjs.org/{pkg}")
+    return res.json().get("dist-tags", {}).get("latest", "N/A") if res.ok else "N/A"
 
 latest_angular_core = fetch_latest_version("@angular/core")
 latest_angular_cli = fetch_latest_version("@angular/cli")
 latest_typescript = fetch_latest_version("typescript")
 
-# Step 3: Get current Confluence page content
+# Metadata
+timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+commit_sha = subprocess.getoutput("git rev-parse --short HEAD")
+
+# Get current Confluence page content
 auth = (email, api_token)
 headers = {"Content-Type": "application/json"}
 url = f"{confluence_base_url}/rest/api/content/{page_id}?expand=body.storage,version"
-
 response = requests.get(url, auth=auth, headers=headers)
-if response.status_code != 200:
-    print(f"Failed to fetch Confluence page: {response.status_code}")
-    exit(1)
 page = response.json()
 current_content = page["body"]["storage"]["value"]
 
-# Step 4: Prepare the table to append
-table_html = f"""
-<h2>Version Comparison</h2>
+# Extract existing version history table (or create one)
+table_header = """
+<h2>📘 Version Update History</h2>
 <table>
-  <tr>
-    <th>Package</th>
-    <th>Project Version</th>
-    <th>Latest Stable Version</th>
-  </tr>
-  <tr>
-    <td>@angular/core</td>
-    <td>{angular_core_version}</td>
-    <td>{latest_angular_core}</td>
-  </tr>
-  <tr>
-    <td>@angular/cli</td>
-    <td>{angular_cli_version}</td>
-    <td>{latest_angular_cli}</td>
-  </tr>
-  <tr>
-    <td>TypeScript</td>
-    <td>{typescript_version}</td>
-    <td>{latest_typescript}</td>
-  </tr>
-</table>
+<tr>
+  <th>⏰ Timestamp (UTC)</th>
+  <th>👤 Author</th>
+  <th>🔁 Commit SHA</th>
+  <th>@angular/core</th>
+  <th>@angular/cli</th>
+  <th>TypeScript</th>
+  <th>Latest @angular/core</th>
+  <th>Latest @angular/cli</th>
+  <th>Latest TypeScript</th>
+</tr>
 """
 
-# Step 5: Append the table to the existing content
-updated_content = current_content + table_html
+new_row = f"""
+<tr>
+  <td>{timestamp}</td>
+  <td>{github_actor}</td>
+  <td>{commit_sha}</td>
+  <td>{angular_core_version}</td>
+  <td>{angular_cli_version}</td>
+  <td>{typescript_version}</td>
+  <td>{latest_angular_core}</td>
+  <td>{latest_angular_cli}</td>
+  <td>{latest_typescript}</td>
+</tr>
+"""
 
-# Step 6: Update the Confluence page
+# Append to top of existing table (most recent first)
+if "<table>" in current_content:
+    updated_content = re.sub(
+        r"(<table>.*?<tr>.*?</tr>)",
+        r"\1" + new_row,
+        current_content,
+        count=1,
+        flags=re.DOTALL
+    )
+else:
+    updated_content = current_content + table_header + new_row + "</table>"
+
+# Update page
 new_version = page["version"]["number"] + 1
 update_data = {
     "id": page_id,
@@ -88,12 +100,10 @@ update_data = {
         }
     }
 }
-
 update_url = f"{confluence_base_url}/rest/api/content/{page_id}"
 update_response = requests.put(update_url, auth=auth, headers=headers, json=update_data)
 
 if update_response.status_code == 200:
-    print("✅ Confluence page updated successfully.")
+    print("✅ Successfully updated Confluence page with version history row.")
 else:
-    print(f"❌ Failed to update Confluence page: {update_response.status_code}")
-    print(update_response.text)
+    print("❌ Update failed:", update_response.text)
